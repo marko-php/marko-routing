@@ -37,6 +37,22 @@ readonly class Cookie
         return $this->name;
     }
 
+    /**
+     * The raw value, before the URL-encoding applied in the Set-Cookie line.
+     */
+    public function value(): string
+    {
+        return $this->value;
+    }
+
+    /**
+     * The expiry as a Unix timestamp; null (or 0) for a browser session cookie.
+     */
+    public function expires(): ?int
+    {
+        return $this->expires;
+    }
+
     public function path(): ?string
     {
         return $this->path;
@@ -45,6 +61,21 @@ readonly class Cookie
     public function domain(): ?string
     {
         return $this->domain;
+    }
+
+    public function secure(): bool
+    {
+        return $this->secure;
+    }
+
+    public function httpOnly(): bool
+    {
+        return $this->httpOnly;
+    }
+
+    public function sameSite(): ?string
+    {
+        return $this->sameSite;
     }
 
     public function toSetCookieString(): string

@@ -79,3 +79,30 @@ it('defaults path and domain to null when not provided', function (): void {
     expect($cookie->path())->toBeNull()
         ->and($cookie->domain())->toBeNull();
 });
+
+it('exposes the raw value, expiry and flags it was built with', function (): void {
+    $cookie = new Cookie(
+        name: 'locale',
+        value: 'nl nl',
+        expires: 1_700_000_000,
+        secure: true,
+        httpOnly: true,
+        sameSite: 'Strict',
+    );
+
+    expect($cookie->value())->toBe('nl nl')
+        ->and($cookie->expires())->toBe(1_700_000_000)
+        ->and($cookie->secure())->toBeTrue()
+        ->and($cookie->httpOnly())->toBeTrue()
+        ->and($cookie->sameSite())->toBe('Strict');
+});
+
+it('defaults to an empty value, no expiry and no flags', function (): void {
+    $cookie = new Cookie(name: 'locale');
+
+    expect($cookie->value())->toBe('')
+        ->and($cookie->expires())->toBeNull()
+        ->and($cookie->secure())->toBeFalse()
+        ->and($cookie->httpOnly())->toBeFalse()
+        ->and($cookie->sameSite())->toBeNull();
+});
