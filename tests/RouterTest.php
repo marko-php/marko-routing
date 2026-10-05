@@ -1029,6 +1029,135 @@ it('casts a POST value to an int action parameter', function (): void {
     expect($receivedCount)->toBe(42);
 });
 
+it('binds json body fields to typed controller parameters', function (): void {
+    $routes = new RouteCollection();
+    $routes->add(new RouteDefinition(
+        method: 'POST',
+        path: '/shows',
+        controller: 'App\\Controllers\\ShowController',
+        action: 'create',
+    ));
+
+    $received = [];
+    $controller = new class ($received)
+    {
+        public function __construct(
+            private array &$received,
+        ) {}
+
+        public function create(
+            string $title,
+            int $count,
+        ): Response {
+            $this->received = ['title' => $title, 'count' => $count];
+
+            return new Response('Created', 201);
+        }
+    };
+
+    $container = $this->createMock(ContainerInterface::class);
+    $container->method('get')
+        ->willReturn($controller);
+
+    $router = new Router(
+        matcher: new RouteMatcher($routes),
+        container: $container,
+    );
+
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/shows', 'CONTENT_TYPE' => 'application/json'],
+        body: '{"title":"Live at Five","count":7}',
+    );
+
+    $response = $router->handle($request);
+
+    expect($response->statusCode())->toBe(201)
+        ->and($received)->toBe(['title' => 'Live at Five', 'count' => 7]);
+});
+
+it('prefers a json body value over a query value of the same name', function (): void {
+    $routes = new RouteCollection();
+    $routes->add(new RouteDefinition(
+        method: 'POST',
+        path: '/shows',
+        controller: 'App\\Controllers\\ShowController',
+        action: 'create',
+    ));
+
+    $receivedTitle = null;
+    $controller = new class ($receivedTitle)
+    {
+        public function __construct(
+            private ?string &$receivedTitle,
+        ) {}
+
+        public function create(
+            string $title,
+        ): Response {
+            $this->receivedTitle = $title;
+
+            return new Response('OK');
+        }
+    };
+
+    $container = $this->createMock(ContainerInterface::class);
+    $container->method('get')
+        ->willReturn($controller);
+
+    $router = new Router(
+        matcher: new RouteMatcher($routes),
+        container: $container,
+    );
+
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/shows?title=query', 'CONTENT_TYPE' => 'application/json'],
+        query: ['title' => 'query'],
+        body: '{"title":"body"}',
+    );
+
+    $router->handle($request);
+
+    expect($receivedTitle)->toBe('body');
+});
+
+it('returns 400 when a json request body is malformed during parameter binding', function (): void {
+    $routes = new RouteCollection();
+    $routes->add(new RouteDefinition(
+        method: 'POST',
+        path: '/shows',
+        controller: 'App\\Controllers\\ShowController',
+        action: 'create',
+    ));
+
+    $controller = new class ()
+    {
+        public function create(
+            string $title,
+        ): Response {
+            return new Response('OK');
+        }
+    };
+
+    $container = $this->createMock(ContainerInterface::class);
+    $container->method('get')
+        ->willReturn($controller);
+
+    $router = new Router(
+        matcher: new RouteMatcher($routes),
+        container: $container,
+    );
+
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/shows', 'CONTENT_TYPE' => 'application/json'],
+        body: '{"title": ',
+    );
+
+    $response = $router->handle($request);
+
+    expect($response->statusCode())->toBe(400)
+        ->and($response->body())->toContain('malformed JSON');
+});
+
 class TestController
 {
     public function index(): Response

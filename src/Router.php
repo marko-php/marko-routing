@@ -8,6 +8,7 @@ use JsonException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Plugin\PluginInterceptedInterface;
 use Marko\Routing\Exceptions\InvalidRouteParameterException;
+use Marko\Routing\Exceptions\MalformedJsonException;
 use Marko\Routing\Http\ExceptionRenderer;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
@@ -74,11 +75,11 @@ readonly class Router
     }
 
     /**
-     * Resolve controller method parameters from route params, POST data, and query string.
+     * Resolve controller method parameters from route params, the request body (JSON or form data), and query string.
      *
      * @param array<string, mixed> $routeParams
      * @return array<mixed>
-     * @throws ReflectionException|InvalidRouteParameterException
+     * @throws ReflectionException|InvalidRouteParameterException|MalformedJsonException
      */
     private function resolveParameters(
         object $controller,
@@ -103,13 +104,11 @@ readonly class Router
                 continue;
             }
 
-            // Priority: route params > POST data > query string > default
+            // Priority: route params > body (JSON or form data) > query string > default
             if (array_key_exists($name, $routeParams)) {
                 $parameters[] = $this->castToType($routeParams[$name], $type);
-            } elseif (($postValue = $request->post($name)) !== null) {
-                $parameters[] = $this->castToType($postValue, $type);
-            } elseif (($queryValue = $request->query($name)) !== null) {
-                $parameters[] = $this->castToType($queryValue, $type);
+            } elseif (($inputValue = $request->input($name)) !== null) {
+                $parameters[] = $this->castToType($inputValue, $type);
             } elseif ($param->isDefaultValueAvailable()) {
                 $parameters[] = $param->getDefaultValue();
             } elseif ($this->isRequiredTypedScalar($type)) {

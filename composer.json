@@ -5,6 +5,7 @@
     "type": "library",
     "require": {
         "php": "^8.5",
+        "ext-fileinfo": "*",
         "marko/core": "self.version"
     },
     "require-dev": {
