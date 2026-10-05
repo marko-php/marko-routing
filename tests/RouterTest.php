@@ -1158,6 +1158,49 @@ it('returns 400 when a json request body is malformed during parameter binding',
         ->and($response->body())->toContain('malformed JSON');
 });
 
+it('renders a 400 when a controller reads a malformed json body itself', function (): void {
+    $routes = new RouteCollection();
+    $routes->add(new RouteDefinition(
+        method: 'POST',
+        path: '/shows',
+        controller: 'App\\Controllers\\ShowController',
+        action: 'create',
+    ));
+
+    $controller = new class ()
+    {
+        public function create(
+            Request $request,
+        ): Response {
+            return new Response((string) json_encode($request->json()));
+        }
+    };
+
+    $container = $this->createMock(ContainerInterface::class);
+    $container->method('get')
+        ->willReturn($controller);
+
+    $router = new Router(
+        matcher: new RouteMatcher($routes),
+        container: $container,
+    );
+
+    $request = new Request(
+        server: [
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => '/shows',
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ],
+        body: '{"title": ',
+    );
+
+    $response = $router->handle($request);
+
+    expect($response->statusCode())->toBe(400)
+        ->and($response->body())->toContain('malformed JSON');
+});
+
 class TestController
 {
     public function index(): Response

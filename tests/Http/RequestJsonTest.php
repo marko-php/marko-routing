@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Marko\Core\Exceptions\HttpExceptionInterface;
 use Marko\Routing\Exceptions\MalformedJsonException;
 use Marko\Routing\Http\Request;
 
@@ -142,4 +143,13 @@ describe('Request JSON', function (): void {
 
         expect($request->input())->toBe(['page' => '2', 'title' => 'Hello', 'count' => 3]);
     });
+});
+
+it('maps MalformedJsonException to a 400 http exception', function (): void {
+    $exception = MalformedJsonException::fromBody(10, 'Syntax error');
+
+    expect($exception)->toBeInstanceOf(HttpExceptionInterface::class)
+        ->and($exception->getStatusCode())->toBe(400)
+        ->and($exception->getHeaders())->toBe([])
+        ->and($exception->getResponseData())->toBe(['message' => $exception->getMessage()]);
 });
