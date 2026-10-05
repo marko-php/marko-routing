@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Marko\Routing;
 
+use JsonException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Plugin\PluginInterceptedInterface;
 use Marko\Routing\Exceptions\InvalidRouteParameterException;
+use Marko\Routing\Http\ExceptionRenderer;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
 use Marko\Routing\Middleware\MiddlewareInterface;
@@ -28,12 +30,13 @@ readonly class Router
         private RouteMatcherInterface $matcher,
         private ContainerInterface $container,
         private array $globalMiddleware = [],
+        ExceptionRenderer $exceptionRenderer = new ExceptionRenderer(),
     ) {
-        $this->pipeline = new MiddlewarePipeline($container);
+        $this->pipeline = new MiddlewarePipeline($container, $exceptionRenderer);
     }
 
     /**
-     * @throws ContainerExceptionInterface|ReflectionException
+     * @throws ContainerExceptionInterface|ReflectionException|JsonException
      */
     public function handle(
         Request $request,
@@ -49,16 +52,12 @@ readonly class Router
         $handler = function (Request $request) use ($matched): Response {
             $controller = $this->container->get($matched->route->controller);
 
-            try {
-                $parameters = $this->resolveParameters(
-                    $controller,
-                    $matched->route->action,
-                    $matched->parameters,
-                    $request,
-                );
-            } catch (InvalidRouteParameterException $e) {
-                return new Response($e->getMessage(), 400);
-            }
+            $parameters = $this->resolveParameters(
+                $controller,
+                $matched->route->action,
+                $matched->parameters,
+                $request,
+            );
 
             $result = $controller->{$matched->route->action}(...$parameters);
 

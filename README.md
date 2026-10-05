@@ -13,6 +13,7 @@ composer require marko/routing
 ```php
 use Marko\Routing\Attributes\Get;
 use Marko\Routing\Attributes\Post;
+use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Http\Response;
 
 class ProductController
@@ -26,6 +27,10 @@ class ProductController
     #[Get('/products/{id}')]
     public function show(int $id): Response
     {
+        if ($id > 1000) {
+            throw HttpException::notFound('Product not found.'); // 404, JSON or HTML
+        }
+
         return new Response("Product $id");
     }
 

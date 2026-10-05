@@ -13,7 +13,9 @@ use Marko\Core\Module\ModuleManifest;
 use Marko\Routing\Attributes\Route;
 use Marko\Routing\Exceptions\RouteConflictException;
 use Marko\Routing\Exceptions\RouteException;
+use Marko\Routing\Http\ExceptionRenderer;
 use Marko\Routing\Middleware\MiddlewareInterface;
+use Psr\Container\ContainerExceptionInterface;
 use ReflectionClass;
 use ReflectionException;
 
@@ -46,7 +48,7 @@ class RoutingBootstrapper
      * Bootstrap the routing system: discover routes and register the Router in the container.
      *
      * @param array<class-string<MiddlewareInterface>> $globalMiddleware
-     * @throws RouteException|RouteConflictException|ReflectionException
+     * @throws RouteException|RouteConflictException|ReflectionException|ContainerExceptionInterface
      */
     public function boot(
         array $globalMiddleware = [],
@@ -62,8 +64,14 @@ class RoutingBootstrapper
         $matcher = new RouteMatcher($this->routes);
         $this->container->instance(RouteMatcherInterface::class, $matcher);
 
-        // Create and register Router
-        $router = new Router($matcher, $this->container, $globalMiddleware);
+        // Create and register Router. The renderer is resolved through the
+        // container so an app-level #[Preference] on ExceptionRenderer applies.
+        $router = new Router(
+            $matcher,
+            $this->container,
+            $globalMiddleware,
+            $this->container->get(ExceptionRenderer::class),
+        );
         $this->container->instance(Router::class, $router);
 
         return $router;

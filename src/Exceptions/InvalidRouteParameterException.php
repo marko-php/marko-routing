@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Marko\Routing\Exceptions;
 
+use Marko\Core\Exceptions\HttpExceptionInterface;
 use Marko\Core\Exceptions\MarkoException;
 
-class InvalidRouteParameterException extends MarkoException
+/**
+ * A required controller parameter could not be resolved from the request.
+ * Rendered as 400 Bad Request; the message names only the parameter and type.
+ */
+class InvalidRouteParameterException extends MarkoException implements HttpExceptionInterface
 {
     public static function missingRequired(
         string $paramName,
@@ -19,5 +24,26 @@ class InvalidRouteParameterException extends MarkoException
             context: "While dispatching $controller::$action()",
             suggestion: "Provide a '$paramName' value in the route, POST body, or query string",
         );
+    }
+
+    public function getStatusCode(): int
+    {
+        return 400;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getHeaders(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getResponseData(): array
+    {
+        return ['message' => $this->getMessage()];
     }
 }
