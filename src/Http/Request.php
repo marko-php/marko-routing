@@ -67,7 +67,7 @@ readonly class Request
 
     public function method(): string
     {
-        return $this->server['REQUEST_METHOD'] ?? 'GET';
+        return strtoupper($this->server['REQUEST_METHOD'] ?? 'GET');
     }
 
     public function path(): string

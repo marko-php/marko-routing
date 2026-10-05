@@ -7,6 +7,7 @@ namespace Marko\Routing;
 use JsonException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Plugin\PluginInterceptedInterface;
+use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Exceptions\InvalidRouteParameterException;
 use Marko\Routing\Exceptions\MalformedJsonException;
 use Marko\Routing\Http\ExceptionRenderer;
@@ -37,15 +38,37 @@ readonly class Router
     }
 
     /**
+     * Dispatch a request through global middleware (and route middleware when a route matches).
+     *
+     * Unmatched requests still run every global middleware; the terminal
+     * handler answers them with a 404, a 405 carrying `Allow`, or — for
+     * OPTIONS — an automatic 204 with `Allow`. Responses to HEAD never carry
+     * a body.
+     *
      * @throws ContainerExceptionInterface|ReflectionException|JsonException
      */
     public function handle(
         Request $request,
     ): Response {
+        $response = $this->dispatch($request);
+
+        return $request->method() === 'HEAD' ? $response->withoutBody() : $response;
+    }
+
+    /**
+     * @throws ContainerExceptionInterface|ReflectionException|JsonException
+     */
+    private function dispatch(
+        Request $request,
+    ): Response {
         $matched = $this->matcher->match($request->method(), $request->path());
 
         if ($matched === null) {
-            return new Response('Not Found', 404);
+            return $this->pipeline->process(
+                $this->globalMiddleware,
+                $request,
+                $this->unmatchedHandler($request),
+            );
         }
 
         $request = $request->withRoute($matched->route->controller, $matched->route->action);
@@ -72,6 +95,34 @@ readonly class Router
             $request,
             $handler,
         );
+    }
+
+    /**
+     * Terminal handler for a request no route matched.
+     *
+     * @return callable(Request): Response
+     */
+    private function unmatchedHandler(
+        Request $request,
+    ): callable {
+        $allowedMethods = $this->matcher->allowedMethods($request->path());
+
+        /** @throws HttpException */
+        return function (Request $request) use ($allowedMethods): Response {
+            if ($allowedMethods === []) {
+                throw HttpException::notFound();
+            }
+
+            if ($request->method() === 'OPTIONS') {
+                return new Response(
+                    body: '',
+                    statusCode: 204,
+                    headers: ['Allow' => implode(', ', $allowedMethods)],
+                );
+            }
+
+            throw HttpException::methodNotAllowed($allowedMethods);
+        };
     }
 
     /**

@@ -24,6 +24,12 @@ it('returns method (GET, POST, etc.) from server vars', function (): void {
     expect($request->method())->toBe('POST');
 });
 
+it('returns the method uppercased', function (): void {
+    $request = new Request(server: ['REQUEST_METHOD' => 'head']);
+
+    expect($request->method())->toBe('HEAD');
+});
+
 it('returns path without query string', function (): void {
     $_SERVER['REQUEST_URI'] = '/users/123?page=1&sort=name';
 

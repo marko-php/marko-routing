@@ -109,5 +109,5 @@ it('demo index.php returns 404 for unmatched routes', function (): void {
     $response = $router->handle($request);
 
     expect($response->statusCode())->toBe(404)
-        ->and($response->body())->toBe('Not Found');
+        ->and($response->body())->toContain('404 Not Found');
 });

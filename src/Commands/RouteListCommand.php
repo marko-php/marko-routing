@@ -33,16 +33,6 @@ readonly class RouteListCommand implements CommandInterface
             return 0;
         }
 
-        usort($routes, function (RouteDefinition $a, RouteDefinition $b): int {
-            $pathCmp = strcmp($a->path, $b->path);
-
-            if ($pathCmp !== 0) {
-                return $pathCmp;
-            }
-
-            return strcmp($a->method, $b->method);
-        });
-
         $methodWidth = strlen('METHOD');
         $pathWidth = strlen('PATH');
         $actionWidth = strlen('ACTION');
@@ -80,11 +70,14 @@ readonly class RouteListCommand implements CommandInterface
     }
 
     /**
+     * Routes in effective match order: grouped by method, then in the order
+     * the matcher tries them (see RouteCollection).
+     *
      * @return array<int, RouteDefinition>
      */
     private function applyFilters(Input $input): array
     {
-        $routes = $this->routes->all();
+        $routes = $this->routes->inMatchOrder();
 
         if ($input->hasOption('method')) {
             $method = strtoupper((string) $input->getOption('method'));

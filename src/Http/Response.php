@@ -25,6 +25,8 @@ class Response
      */
     private array $cookies = [];
 
+    private bool $bodyOmitted = false;
+
     /**
      * @param array<string, string> $headers
      */
@@ -90,6 +92,28 @@ class Response
         $clone->statusCode = $statusCode;
 
         return $clone;
+    }
+
+    /**
+     * Drop the body but keep status, headers, cookies and the concrete class.
+     *
+     * The router applies this to every HEAD response. Subclasses that write
+     * their own output in send() (e.g. a streaming response) must check
+     * isBodyOmitted() and send headers only.
+     */
+    #[NoDiscard]
+    public function withoutBody(): static
+    {
+        $clone = clone $this;
+        $clone->body = '';
+        $clone->bodyOmitted = true;
+
+        return $clone;
+    }
+
+    public function isBodyOmitted(): bool
+    {
+        return $this->bodyOmitted;
     }
 
     #[NoDiscard]

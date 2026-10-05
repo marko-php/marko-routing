@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use Marko\Routing\Attributes\Delete;
 use Marko\Routing\Attributes\Get;
+use Marko\Routing\Attributes\Head;
+use Marko\Routing\Attributes\Options;
 use Marko\Routing\Attributes\Patch;
 use Marko\Routing\Attributes\Post;
 use Marko\Routing\Attributes\Put;
+use Marko\Routing\Attributes\Route;
 
 it('Get attribute accepts path parameter', function () {
     $get = new Get('/posts');
@@ -90,4 +93,24 @@ it('route attributes expose method property matching HTTP method', function () {
         ->and((new Put('/posts/{id}'))->getMethod())->toBe('PUT')
         ->and((new Patch('/posts/{id}'))->getMethod())->toBe('PATCH')
         ->and((new Delete('/posts/{id}'))->getMethod())->toBe('DELETE');
+});
+
+it('returns HEAD from the Head attribute', function () {
+    expect((new Head('/posts'))->getMethod())->toBe('HEAD');
+});
+
+it('returns OPTIONS from the Options attribute', function () {
+    expect((new Options('/posts'))->getMethod())->toBe('OPTIONS');
+});
+
+it('declares Head and Options as readonly method-only route attributes', function () {
+    foreach ([Head::class, Options::class] as $attributeClass) {
+        $reflection = new ReflectionClass($attributeClass);
+
+        expect($reflection->isReadOnly())->toBeTrue()
+            ->and($reflection->isSubclassOf(Route::class))->toBeTrue()
+            ->and($reflection->getAttributes(Attribute::class)[0]->newInstance()->flags)->toBe(
+                Attribute::TARGET_METHOD,
+            );
+    }
 });

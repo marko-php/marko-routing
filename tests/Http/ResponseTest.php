@@ -230,3 +230,42 @@ it('preserves cookie order in the emitted lines', function (): void {
         'Set-Cookie: ' . $secondCookie->toSetCookieString(),
     ]);
 });
+
+describe('withoutBody', function (): void {
+    it('removes the body while keeping status headers and cookies', function (): void {
+        $cookie = new Cookie(name: 'session_id', value: 'abc123');
+        $response = new Response(body: 'Hello', statusCode: 201, headers: ['X-Custom' => 'value'])
+            ->withCookie($cookie);
+
+        $stripped = $response->withoutBody();
+
+        expect($stripped->body())->toBe('')
+            ->and($stripped->statusCode())->toBe(201)
+            ->and($stripped->headers())->toBe(['X-Custom' => 'value'])
+            ->and($stripped->cookies())->toBe([$cookie])
+            ->and($response->body())->toBe('Hello');
+    });
+
+    it('preserves the concrete response subclass when removing the body', function (): void {
+        $response = new class ('Hello') extends Response {};
+
+        expect($response->withoutBody())->toBeInstanceOf($response::class);
+    });
+
+    it('reports whether the body was omitted', function (): void {
+        $response = new Response(body: '');
+
+        expect($response->isBodyOmitted())->toBeFalse()
+            ->and($response->withoutBody()->isBodyOmitted())->toBeTrue();
+    });
+
+    it('outputs nothing when a response without body is sent', function (): void {
+        $response = new Response(body: 'Hello World')->withoutBody();
+
+        ob_start();
+        $response->send();
+        $output = ob_get_clean();
+
+        expect($output)->toBe('');
+    });
+});

@@ -8,6 +8,7 @@ use Marko\Routing\RouteDiscovery;
 use Test\DiscoveryModule\DeleteController;
 use Test\DiscoveryModule\DisabledRouteController;
 use Test\DiscoveryModule\GetController;
+use Test\DiscoveryModule\HeadOptionsController;
 use Test\DiscoveryModule\InlineMiddlewareController;
 use Test\DiscoveryModule\MiddlewareController;
 use Test\DiscoveryModule\MissingAttributeController;
@@ -81,6 +82,14 @@ it('finds methods with Delete attribute', function () {
     expect($routes)->toHaveCount(1)
         ->and($routes[0])->toBeInstanceOf(RouteDefinition::class)
         ->and($routes[0]->method)->toBe('DELETE');
+});
+
+it('discovers Head and Options routes on controller methods', function () {
+    require_once $this->fixturesPath . '/src/HeadOptionsController.php';
+
+    $routes = $this->discovery->discoverFromClass(HeadOptionsController::class);
+
+    expect(array_map(fn (RouteDefinition $route): string => $route->method, $routes))->toBe(['HEAD', 'OPTIONS']);
 });
 
 it('creates RouteDefinition for each discovered route', function () {

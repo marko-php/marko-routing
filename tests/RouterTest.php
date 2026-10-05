@@ -78,7 +78,7 @@ it('returns 404 response when no route matches', function (): void {
     $response = $router->handle($request);
 
     expect($response->statusCode())->toBe(404)
-        ->and($response->body())->toBe('Not Found');
+        ->and($response->body())->toContain('404 Not Found');
 });
 
 it('resolves controller through container', function (): void {

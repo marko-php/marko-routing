@@ -123,3 +123,33 @@ it('RouteDefinition is readonly', function () {
 
     expect($reflection->isReadOnly())->toBeTrue();
 });
+
+describe('specificity', function (): void {
+    it('marks a route without parameters as static', function (): void {
+        $static = new RouteDefinition(
+            method: 'GET',
+            path: '/shows/live',
+            controller: 'ShowController',
+            action: 'live',
+        );
+        $dynamic = new RouteDefinition(
+            method: 'GET',
+            path: '/shows/{id}',
+            controller: 'ShowController',
+            action: 'show',
+        );
+
+        expect($static->isStatic)->toBeTrue()
+            ->and($dynamic->isStatic)->toBeFalse();
+    });
+
+    it('counts static segments and static prefix length for dynamic routes', function (): void {
+        $route = new RouteDefinition(method: 'GET', path: '/api/users/{id}/posts', controller: 'C', action: 'a');
+        $mixed = new RouteDefinition(method: 'GET', path: '/files/report.{ext}', controller: 'C', action: 'a');
+
+        expect($route->staticSegmentCount)->toBe(3)
+            ->and($route->staticPrefixLength)->toBe(strlen('/api/users/'))
+            ->and($mixed->staticSegmentCount)->toBe(1)
+            ->and($mixed->staticPrefixLength)->toBe(strlen('/files/report.'));
+    });
+});

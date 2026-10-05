@@ -122,9 +122,9 @@ it('displays middleware as short class names', function (): void {
         ->and($result)->not->toContain('App\\Middleware\\AuthMiddleware');
 });
 
-it('sorts routes by path then by method', function (): void {
+it('groups routes by method in a fixed method order', function (): void {
     $result = runCommand(makeCollection([
-        new RouteDefinition('GET', '/users', 'App\\Controllers\\UserController', 'index'),
+        new RouteDefinition('DELETE', '/users/{id}', 'App\\Controllers\\UserController', 'destroy'),
         new RouteDefinition('POST', '/articles', 'App\\Controllers\\ArticleController', 'store'),
         new RouteDefinition('GET', '/articles', 'App\\Controllers\\ArticleController', 'index'),
     ]));
@@ -132,11 +132,25 @@ it('sorts routes by path then by method', function (): void {
     $lines = explode("\n", trim($result));
 
     // Header is line 0; data rows follow
-    expect($lines[1])->toContain('/articles')
-        ->and($lines[1])->toContain('GET')
-        ->and($lines[2])->toContain('/articles')
-        ->and($lines[2])->toContain('POST')
-        ->and($lines[3])->toContain('/users');
+    expect($lines[1])->toStartWith('GET')
+        ->and($lines[2])->toStartWith('POST')
+        ->and($lines[3])->toStartWith('DELETE');
+});
+
+it('lists routes of a method in effective match order', function (): void {
+    $result = runCommand(makeCollection([
+        new RouteDefinition('GET', '/shows/{id}', 'App\\Controllers\\ShowController', 'show'),
+        new RouteDefinition('GET', '/a/{x}/{y}', 'App\\Controllers\\AController', 'generic'),
+        new RouteDefinition('GET', '/a/{x}/c', 'App\\Controllers\\AController', 'specific'),
+        new RouteDefinition('GET', '/shows/live', 'App\\Controllers\\ShowController', 'live'),
+    ]));
+
+    $lines = explode("\n", trim($result));
+
+    expect($lines[1])->toContain('/shows/live')
+        ->and($lines[2])->toContain('/a/{x}/c')
+        ->and($lines[3])->toContain('/shows/{id}')
+        ->and($lines[4])->toContain('/a/{x}/{y}');
 });
 
 it('displays No routes registered when collection is empty', function (): void {
@@ -168,8 +182,8 @@ it('formats output with aligned columns', function (): void {
     expect($lines[0])->toMatch('/^METHOD\s+PATH\s+ACTION\s+MIDDLEWARE$/');
 
     $headerPathPos = strpos($lines[0], 'PATH');
-    $row1PathPos = strpos($lines[1], '/articles');
-    $row2PathPos = strpos($lines[2], '/users');
+    $row1PathPos = strpos($lines[1], '/users');
+    $row2PathPos = strpos($lines[2], '/articles');
 
     expect($row1PathPos)->toBe($headerPathPos)
         ->and($row2PathPos)->toBe($headerPathPos);
