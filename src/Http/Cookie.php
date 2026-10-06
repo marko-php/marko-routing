@@ -22,6 +22,7 @@ readonly class Cookie
         private bool $secure = false,
         private bool $httpOnly = false,
         private ?string $sameSite = null,
+        private ?int $maxAge = null,
     ) {
         if ($this->name === '' || preg_match(self::INVALID_NAME_PATTERN, $this->name) === 1) {
             throw CookieException::invalidName($this->name);
@@ -78,12 +79,30 @@ readonly class Cookie
         return $this->sameSite;
     }
 
+    /**
+     * The lifetime in seconds from when the client receives the cookie; null when not set.
+     * Zero or negative deletes the cookie. Browsers prefer Max-Age over Expires (RFC 6265 §5.3).
+     */
+    public function maxAge(): ?int
+    {
+        return $this->maxAge;
+    }
+
+    /**
+     * The Set-Cookie header value. Max-Age is sent as given (zero for a negative value);
+     * no Expires attribute is derived from it, so pass $expires as well for clients that
+     * predate Max-Age.
+     */
     public function toSetCookieString(): string
     {
         $parts = [$this->name . '=' . rawurlencode($this->value)];
 
         if ($this->expires !== null && $this->expires !== 0) {
             $parts[] = 'Expires=' . gmdate('D, d M Y H:i:s \G\M\T', $this->expires);
+        }
+
+        if ($this->maxAge !== null) {
+            $parts[] = 'Max-Age=' . max(0, $this->maxAge);
         }
 
         if ($this->path !== null) {
