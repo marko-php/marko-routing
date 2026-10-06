@@ -129,14 +129,14 @@ describe('#[WithoutMiddleware]', function (): void {
             ->and($response->headers())->not->toHaveKey('X-Ran');
     });
 
-    it('still runs every global middleware for unmatched requests', function (): void {
+    it('runs no global middleware without RunsOnUnmatched for unmatched requests', function (): void {
         $router = bootStatelessRouter([FirstGlobalMiddleware::class, SecondGlobalMiddleware::class]);
         AbstractRecordingMiddleware::$ran = [];
 
         $response = $router->handle(statelessRequest('/missing'));
 
         expect($response->statusCode())->toBe(404)
-            ->and(AbstractRecordingMiddleware::$ran)->toBe(['FirstGlobalMiddleware', 'SecondGlobalMiddleware']);
+            ->and(AbstractRecordingMiddleware::$ran)->toBe([]);
     });
 
     it('keeps class-level excluded middleware on routes inherited through a Preference', function (): void {

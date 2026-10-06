@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Marko\Core\Container\ContainerInterface;
+use Marko\Routing\Attributes\RunsOnUnmatched;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
 use Marko\Routing\Middleware\MiddlewareInterface;
@@ -69,9 +70,28 @@ class StampingMiddleware implements MiddlewareInterface
 }
 
 /**
+ * Global middleware that opts in to unmatched (404/405/automatic OPTIONS) requests.
+ */
+#[RunsOnUnmatched]
+class UnmatchedStampingMiddleware implements MiddlewareInterface
+{
+    /** @var array<int, ?string> */
+    public array $controllers = [];
+
+    public function handle(
+        Request $request,
+        callable $next,
+    ): Response {
+        $this->controllers[] = $request->controller();
+
+        return $next($request)->withHeader('X-Unmatched', 'ran');
+    }
+}
+
+/**
  * @param array<int, RouteDefinition> $routes
  * @param array<int, class-string<MiddlewareInterface>> $globalMiddleware
- * @return array{router: Router, controller: MatchingTestController, middleware: StampingMiddleware}
+ * @return array{router: Router, controller: MatchingTestController, middleware: StampingMiddleware, unmatchedMiddleware: UnmatchedStampingMiddleware}
  */
 function createMatchingRouter(
     array $routes,
@@ -85,11 +105,13 @@ function createMatchingRouter(
 
     $controller = new MatchingTestController();
     $middleware = new StampingMiddleware();
-    $container = new readonly class ($controller, $middleware) implements ContainerInterface
+    $unmatchedMiddleware = new UnmatchedStampingMiddleware();
+    $container = new readonly class ($controller, $middleware, $unmatchedMiddleware) implements ContainerInterface
     {
         public function __construct(
             private MatchingTestController $controller,
             private StampingMiddleware $middleware,
+            private UnmatchedStampingMiddleware $unmatchedMiddleware,
         ) {}
 
         public function get(string $id): object
@@ -97,12 +119,17 @@ function createMatchingRouter(
             return match ($id) {
                 MatchingTestController::class => $this->controller,
                 StampingMiddleware::class => $this->middleware,
+                UnmatchedStampingMiddleware::class => $this->unmatchedMiddleware,
             };
         }
 
         public function has(string $id): bool
         {
-            return in_array($id, [MatchingTestController::class, StampingMiddleware::class], true);
+            return in_array(
+                $id,
+                [MatchingTestController::class, StampingMiddleware::class, UnmatchedStampingMiddleware::class],
+                true,
+            );
         }
 
         public function singleton(string $id): void {}
@@ -131,6 +158,7 @@ function createMatchingRouter(
         ),
         'controller' => $controller,
         'middleware' => $middleware,
+        'unmatchedMiddleware' => $unmatchedMiddleware,
     ];
 }
 
@@ -194,19 +222,61 @@ describe('unmatched requests', function (): void {
             ->and($response->body())->toContain('404 Not Found');
     });
 
-    it('runs global middleware on 404 and 405 responses', function (): void {
+    it('runs global middleware marked with RunsOnUnmatched on 404 and 405 responses', function (): void {
         ['router' => $router] = createMatchingRouter(
             [matchingRoute('GET', '/posts', 'show')],
-            [StampingMiddleware::class],
+            [UnmatchedStampingMiddleware::class],
         );
 
         $notFound = $router->handle(matchingRequest('GET', '/missing'));
         $notAllowed = $router->handle(matchingRequest('DELETE', '/posts'));
 
         expect($notFound->statusCode())->toBe(404)
-            ->and($notFound->headers()['X-Global'])->toBe('ran')
+            ->and($notFound->headers()['X-Unmatched'])->toBe('ran')
             ->and($notAllowed->statusCode())->toBe(405)
-            ->and($notAllowed->headers()['X-Global'])->toBe('ran');
+            ->and($notAllowed->headers()['X-Unmatched'])->toBe('ran');
+    });
+
+    it('skips global middleware without RunsOnUnmatched for unmatched requests', function (): void {
+        ['router' => $router, 'middleware' => $middleware] = createMatchingRouter(
+            [matchingRoute('GET', '/posts', 'show')],
+            [StampingMiddleware::class, UnmatchedStampingMiddleware::class],
+        );
+
+        $notFound = $router->handle(matchingRequest('GET', '/missing'));
+        $notAllowed = $router->handle(matchingRequest('DELETE', '/posts'));
+
+        expect($notFound->statusCode())->toBe(404)
+            ->and($notFound->headers())->not->toHaveKey('X-Global')
+            ->and($notFound->headers()['X-Unmatched'])->toBe('ran')
+            ->and($notAllowed->statusCode())->toBe(405)
+            ->and($notAllowed->headers())->not->toHaveKey('X-Global')
+            ->and($middleware->controllers)->toBeEmpty();
+    });
+
+    it('skips a global middleware whose declared class does not exist on unmatched requests', function (): void {
+        ['router' => $router] = createMatchingRouter(
+            [matchingRoute('GET', '/posts', 'show')],
+            ['App\\Middleware\\MissingMiddleware', UnmatchedStampingMiddleware::class],
+        );
+
+        $response = $router->handle(matchingRequest('GET', '/missing'));
+
+        expect($response->statusCode())->toBe(404)
+            ->and($response->headers()['X-Unmatched'])->toBe('ran');
+    });
+
+    it('still runs every global middleware for matched routes', function (): void {
+        ['router' => $router] = createMatchingRouter(
+            [matchingRoute('GET', '/posts', 'show')],
+            [StampingMiddleware::class, UnmatchedStampingMiddleware::class],
+        );
+
+        $response = $router->handle(matchingRequest('GET', '/posts'));
+
+        expect($response->statusCode())->toBe(200)
+            ->and($response->headers()['X-Global'])->toBe('ran')
+            ->and($response->headers()['X-Unmatched'])->toBe('ran');
     });
 
     it('does not run route middleware for unmatched requests', function (): void {
@@ -240,7 +310,10 @@ describe('unmatched requests', function (): void {
     });
 
     it('leaves the request controller null for unmatched requests', function (): void {
-        ['router' => $router, 'middleware' => $middleware] = createMatchingRouter([], [StampingMiddleware::class]);
+        ['router' => $router, 'unmatchedMiddleware' => $middleware] = createMatchingRouter(
+            [],
+            [UnmatchedStampingMiddleware::class],
+        );
 
         $router->handle(matchingRequest('GET', '/missing'));
 
@@ -252,15 +325,28 @@ describe('OPTIONS', function (): void {
     it('answers OPTIONS automatically with 204 and an Allow header', function (): void {
         ['router' => $router] = createMatchingRouter(
             [matchingRoute('GET', '/posts', 'show'), matchingRoute('POST', '/posts', 'store')],
-            [StampingMiddleware::class],
+            [UnmatchedStampingMiddleware::class],
         );
 
         $response = $router->handle(matchingRequest('OPTIONS', '/posts'));
 
         expect($response->statusCode())->toBe(204)
             ->and($response->headers()['Allow'])->toBe('GET, HEAD, POST, OPTIONS')
-            ->and($response->headers()['X-Global'])->toBe('ran')
+            ->and($response->headers()['X-Unmatched'])->toBe('ran')
             ->and($response->body())->toBe('');
+    });
+
+    it('answers automatic OPTIONS without running unmarked global middleware', function (): void {
+        ['router' => $router, 'middleware' => $middleware] = createMatchingRouter(
+            [matchingRoute('GET', '/posts', 'show')],
+            [StampingMiddleware::class],
+        );
+
+        $response = $router->handle(matchingRequest('OPTIONS', '/posts'));
+
+        expect($response->statusCode())->toBe(204)
+            ->and($response->headers())->not->toHaveKey('X-Global')
+            ->and($middleware->controllers)->toBeEmpty();
     });
 
     it('returns 404 for OPTIONS on an unknown path', function (): void {
@@ -322,5 +408,14 @@ describe('HEAD', function (): void {
             ->and($notAllowed->statusCode())->toBe(405)
             ->and($notAllowed->headers()['Allow'])->toBe('POST, OPTIONS')
             ->and($notAllowed->body())->toBe('');
+    });
+});
+
+describe('#[RunsOnUnmatched]', function (): void {
+    it('targets classes only', function (): void {
+        $flags = new ReflectionClass(RunsOnUnmatched::class)->getAttributes(Attribute::class)[0]
+            ->newInstance()->flags;
+
+        expect($flags)->toBe(Attribute::TARGET_CLASS);
     });
 });

@@ -7,6 +7,7 @@ namespace Marko\Routing;
 use JsonException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Plugin\PluginInterceptedInterface;
+use Marko\Routing\Attributes\RunsOnUnmatched;
 use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Exceptions\InvalidRouteParameterException;
 use Marko\Routing\Exceptions\MalformedJsonException;
@@ -16,6 +17,7 @@ use Marko\Routing\Http\Response;
 use Marko\Routing\Middleware\MiddlewareInterface;
 use Marko\Routing\Middleware\MiddlewarePipeline;
 use Psr\Container\ContainerExceptionInterface;
+use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -40,10 +42,11 @@ readonly class Router
     /**
      * Dispatch a request through global middleware (and route middleware when a route matches).
      *
-     * Unmatched requests still run every global middleware; the terminal
-     * handler answers them with a 404, a 405 carrying `Allow`, or — for
-     * OPTIONS — an automatic 204 with `Allow`. Responses to HEAD never carry
-     * a body.
+     * Unmatched requests run only the global middleware marked
+     * #[RunsOnUnmatched] (CORS, for example), never session, CSRF or auth;
+     * the terminal handler answers them with a 404, a 405 carrying `Allow`,
+     * or — for OPTIONS — an automatic 204 with `Allow`. Responses to HEAD
+     * never carry a body.
      *
      * @throws ContainerExceptionInterface|ReflectionException|JsonException
      */
@@ -65,7 +68,7 @@ readonly class Router
 
         if ($matched === null) {
             return $this->pipeline->process(
-                $this->globalMiddleware,
+                $this->unmatchedMiddleware(),
                 $request,
                 $this->unmatchedHandler($request),
             );
@@ -111,6 +114,23 @@ readonly class Router
         }
 
         return array_values(array_diff($middleware, $route->withoutMiddleware));
+    }
+
+    /**
+     * The global middleware that opted in to requests no route matched with
+     * #[RunsOnUnmatched], in declaration order. A class that cannot be loaded
+     * cannot carry the attribute, so it is skipped here; matched routes still
+     * fail loudly when the container resolves it.
+     *
+     * @return array<int, string>
+     */
+    private function unmatchedMiddleware(): array
+    {
+        return array_values(array_filter(
+            $this->globalMiddleware,
+            fn (string $middleware): bool => class_exists($middleware)
+                && new ReflectionClass($middleware)->getAttributes(RunsOnUnmatched::class) !== [],
+        ));
     }
 
     /**
