@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Marko\Routing\Http;
 
 use finfo;
+use Marko\Core\Contracts\UploadedFileInterface;
 use Marko\Routing\Exceptions\UploadedFileException;
 
 /**
@@ -14,7 +15,7 @@ use Marko\Routing\Exceptions\UploadedFileException;
  * and guessExtension(), which inspect the file contents, for any decision that
  * matters. The file can be moved exactly once.
  */
-class UploadedFile
+class UploadedFile implements UploadedFileInterface
 {
     /**
      * Preferred extensions for common MIME types, where finfo's own list starts with a less common one.

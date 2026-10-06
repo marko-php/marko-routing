@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Marko\Core\Contracts\UploadedFileInterface;
 use Marko\Routing\Exceptions\UploadedFileException;
 use Marko\Routing\Http\UploadedFile;
 
@@ -35,6 +36,10 @@ function makeTestUpload(
 }
 
 describe('UploadedFile', function (): void {
+    it('is implemented by the routing UploadedFile', function (): void {
+        expect(makeTestUpload())->toBeInstanceOf(UploadedFileInterface::class);
+    });
+
     it('exposes client filename, client media type, size, error and temp path', function (): void {
         $file = new UploadedFile(
             tempPath: '/tmp/php1234',
