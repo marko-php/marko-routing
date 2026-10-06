@@ -61,6 +61,25 @@ class UrlGenerationException extends RouteException
         );
     }
 
+    public static function unsafeParameterValue(
+        string $name,
+        string $parameter,
+        string $value,
+        bool $catchAll,
+    ): self {
+        $rule = $catchAll
+            ? 'a catch-all value may not contain a NUL byte or a . or .. segment'
+            : 'a parameter value may not contain /, a NUL byte, or be . or ..';
+
+        return new self(
+            message: "Parameter '$parameter' for route '$name' has an unsafe value '$value': $rule",
+            context: 'While generating a URL',
+            suggestion: $catchAll
+                ? 'Pass a path without . or .. segments; the generated URL would not match the route'
+                : 'Pass a value without slashes, or use a catch-all {' . $parameter . '*} parameter; the generated URL would not match the route',
+        );
+    }
+
     public static function missingBaseUrl(
         string $name,
     ): self {

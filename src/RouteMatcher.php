@@ -8,7 +8,8 @@ namespace Marko\Routing;
  * Matches a request method and path against the route collection.
  *
  * Static routes are found by exact lookup; dynamic routes are tried in the
- * collection's precedence order (see RouteCollection). A HEAD request with no
+ * collection's precedence order (see RouteCollection); a route whose decoded
+ * parameter values fail RouteDefinition::acceptsValue() is skipped. A HEAD request with no
  * matching HEAD route falls back to the GET route for the same path.
  *
  * Dynamic hits are memoized so middleware and the router can call match() for
@@ -89,12 +90,20 @@ class RouteMatcher implements RouteMatcherInterface
                 continue;
             }
 
-            if (preg_match($route->regex, $normalizedPath, $matches)) {
-                return $this->remember($memoKey, new MatchedRoute(
-                    route: $route,
-                    parameters: $this->extractParameters($route, $matches),
-                ));
+            if (!preg_match($route->regex, $normalizedPath, $matches)) {
+                continue;
             }
+
+            $parameters = $this->extractParameters($route, $matches);
+
+            if ($parameters === null) {
+                continue;
+            }
+
+            return $this->remember($memoKey, new MatchedRoute(
+                route: $route,
+                parameters: $parameters,
+            ));
         }
 
         return null;
@@ -123,19 +132,31 @@ class RouteMatcher implements RouteMatcherInterface
     }
 
     /**
+     * Decode the captured values, or return null when a decoded value is
+     * unsafe (an encoded `/`, a `.`/`..` segment or a NUL byte) so the route
+     * does not match.
+     *
      * @param array<int|string, string> $matches
-     * @return array<string, string>
+     * @return array<string, string>|null
      */
     private function extractParameters(
         RouteDefinition $route,
         array $matches,
-    ): array {
+    ): ?array {
         $parameters = [];
 
         foreach ($route->parameters as $name) {
-            if (isset($matches[$name])) {
-                $parameters[$name] = rawurldecode($matches[$name]);
+            if (!isset($matches[$name])) {
+                continue;
             }
+
+            $value = rawurldecode($matches[$name]);
+
+            if (!$route->acceptsValue($name, $value)) {
+                return null;
+            }
+
+            $parameters[$name] = $value;
         }
 
         return $parameters;

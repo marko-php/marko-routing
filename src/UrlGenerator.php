@@ -75,6 +75,15 @@ readonly class UrlGenerator implements UrlGeneratorInterface
             throw UrlGenerationException::missingParameter($name, $parameter, $route->path);
         }
 
+        if (!$route->acceptsValue($parameter, $string)) {
+            throw UrlGenerationException::unsafeParameterValue(
+                $name,
+                $parameter,
+                $string,
+                $parameter === $route->catchAll,
+            );
+        }
+
         if (!$route->satisfiesConstraint($parameter, $string)) {
             throw UrlGenerationException::constraintViolation(
                 $name,

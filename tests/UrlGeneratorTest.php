@@ -69,7 +69,7 @@ describe('UrlGenerator', function (): void {
     });
 
     it('encodes parameter values', function (): void {
-        expect(urlGenerator()->route('tags.show', ['tag' => 'c# & php/8']))->toBe('/tags/c%23%20%26%20php%2F8');
+        expect(urlGenerator()->route('tags.show', ['tag' => 'c# & php 8?']))->toBe('/tags/c%23%20%26%20php%208%3F');
     });
 
     it('keeps slashes in catch-all values', function (): void {
@@ -129,6 +129,15 @@ describe('UrlGenerator', function (): void {
         urlGenerator()->route('shows.show', ['id' => 'abc']);
     })->throws(UrlGenerationException::class, "Parameter 'id' for route 'shows.show' does not match its constraint");
 
+    it('throws when a value would not match the route back', function (string $name, array $parameters): void {
+        urlGenerator()->route($name, $parameters);
+    })->with([
+        'slash in a segment' => ['tags.show', ['tag' => 'php/8']],
+        'parent segment' => ['tags.show', ['tag' => '..']],
+        'NUL byte' => ['tags.show', ['tag' => "php\0"]],
+        'parent segment in a catch-all' => ['docs', ['path' => 'guides/../../secret']],
+    ])->throws(UrlGenerationException::class, 'has an unsafe value');
+
     it('throws when the route name is unknown', function (): void {
         try {
             urlGenerator()->route('shows.shwo');
@@ -145,10 +154,10 @@ describe('UrlGenerator', function (): void {
         $generator = new UrlGenerator($routes, new RoutingConfig(new FakeConfigRepository(['routing.url' => ''])));
         $matcher = new RouteMatcher($routes);
 
-        $tag = $matcher->match('GET', $generator->route('tags.show', ['tag' => 'c# & php/8 ü']));
+        $tag = $matcher->match('GET', $generator->route('tags.show', ['tag' => 'c# & php 8 ü']));
         $docs = $matcher->match('GET', $generator->route('docs', ['path' => 'a b/c%d/e']));
 
-        expect($tag->parameters)->toBe(['tag' => 'c# & php/8 ü'])
+        expect($tag->parameters)->toBe(['tag' => 'c# & php 8 ü'])
             ->and($docs->parameters)->toBe(['path' => 'a b/c%d/e']);
     });
 });

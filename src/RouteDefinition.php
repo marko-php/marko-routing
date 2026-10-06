@@ -18,6 +18,9 @@ use Marko\Routing\Exceptions\RouteException;
  *   groups only), e.g. `{id:\d+}` or `{year:\d{4}}`.
  * - `{name*}` is a catch-all that matches the rest of the path, slashes
  *   included. It must be the whole final segment.
+ *
+ * Matched values are URL-decoded, and a decoded value that could walk a
+ * filesystem path (see acceptsValue()) does not match.
  */
 readonly class RouteDefinition
 {
@@ -133,6 +136,35 @@ readonly class RouteDefinition
         }
 
         return preg_match('#^(?:' . $this->escapeDelimiter($this->constraints[$parameter]) . ')$#', $value) === 1;
+    }
+
+    /**
+     * Whether a decoded value is safe to hand to the controller.
+     *
+     * Matching runs on the raw, still-encoded path, so `%2F` and `%2E%2E`
+     * only become `/` and `..` after decoding. No value may contain a NUL
+     * byte or a `.`/`..` path segment. A catch-all may contain `/` (that is
+     * its purpose); every other parameter, constrained or not, may not.
+     */
+    public function acceptsValue(
+        string $parameter,
+        string $value,
+    ): bool {
+        if (str_contains($value, "\0")) {
+            return false;
+        }
+
+        if ($parameter !== $this->catchAll) {
+            return !str_contains($value, '/') && $value !== '.' && $value !== '..';
+        }
+
+        foreach (explode('/', $value) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
