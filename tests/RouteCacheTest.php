@@ -7,6 +7,7 @@ use Marko\Core\Command\Input;
 use Marko\Core\Command\Output;
 use Marko\Core\Container\PreferenceRegistry;
 use Marko\Core\Discovery\ClassFileParser;
+use Marko\Core\Discovery\DiscoveryCache;
 use Marko\Core\Discovery\DiscoveryCompiler;
 use Marko\Core\Exceptions\DiscoveryCacheException;
 use Marko\Core\Module\ManifestParser;
@@ -27,8 +28,9 @@ class RouteCacheRecordingManifestParser extends ManifestParser
 {
     public int $parseCalls = 0;
 
-    public function parse(string $modulePath): ModuleManifest
-    {
+    public function parse(
+        string $modulePath,
+    ): ModuleManifest {
         $this->parseCalls++;
 
         return parent::parse($modulePath);
@@ -44,22 +46,25 @@ readonly class RouteCacheRecordingModuleDiscovery extends ModuleDiscovery
         parent::__construct($parser);
     }
 
-    public function discoverInVendor(string $vendorDir): array
-    {
+    public function discoverInVendor(
+        string $vendorDir,
+    ): array {
         $this->calls[] = 'vendor';
 
         return parent::discoverInVendor($vendorDir);
     }
 
-    public function discoverInModules(string $modulesDir): array
-    {
+    public function discoverInModules(
+        string $modulesDir,
+    ): array {
         $this->calls[] = 'modules';
 
         return parent::discoverInModules($modulesDir);
     }
 
-    public function discoverInApp(string $appDir): array
-    {
+    public function discoverInApp(
+        string $appDir,
+    ): array {
         $this->calls[] = 'app';
 
         return parent::discoverInApp($appDir);
@@ -70,22 +75,26 @@ class RouteCacheRecordingClassFileParser extends ClassFileParser
 {
     public int $calls = 0;
 
-    public function extractClassName(string $filePath): ?string
-    {
+    public function extractClassName(
+        string $filePath,
+    ): ?string {
         $this->calls++;
 
         return parent::extractClassName($filePath);
     }
 
-    public function loadClass(string $filePath, string $className): bool
-    {
+    public function loadClass(
+        string $filePath,
+        string $className,
+    ): bool {
         $this->calls++;
 
         return parent::loadClass($filePath, $className);
     }
 
-    public function findPhpFiles(string $directory): iterable
-    {
+    public function findPhpFiles(
+        string $directory,
+    ): iterable {
         $this->calls++;
 
         return parent::findPhpFiles($directory);
@@ -130,8 +139,10 @@ function routeCacheProject(): array
     file_put_contents("$src/GlobalHeader.php", $header . $uses . <<<'PHP'
         class GlobalHeader implements MiddlewareInterface
         {
-            public function handle(Request $request, callable $next): Response
-            {
+            public function handle(
+                Request $request,
+                callable $next,
+            ): Response {
                 return $next($request);
             }
         }
@@ -180,8 +191,9 @@ function routeCacheProject(): array
 /**
  * Delete a project built by routeCacheProject(). Symlinks are unlinked, never followed.
  */
-function routeCacheCleanup(string $path): void
-{
+function routeCacheCleanup(
+    string $path,
+): void {
     if (is_link($path) || is_file($path)) {
         unlink($path);
 
@@ -223,8 +235,9 @@ function routeCacheApplication(
  * Compile the cache with `marko discovery:cache` in a separate PHP process, so
  * no controller class of the project is ever loaded into this one.
  */
-function routeCacheCompileInSubprocess(string $base): void
-{
+function routeCacheCompileInSubprocess(
+    string $base,
+): void {
     $autoload = dirname(__DIR__, 3) . '/vendor/autoload.php';
     $script = 'require ' . var_export($autoload, true) . ';'
         . '$app = new Marko\Core\Application(' . var_export("$base/vendor", true) . ', '
@@ -242,8 +255,9 @@ function routeCacheCompileInSubprocess(string $base): void
 /**
  * @return array<int, array<string, mixed>>
  */
-function routeCacheDescribe(RouteCollection $routes): array
-{
+function routeCacheDescribe(
+    RouteCollection $routes,
+): array {
     return array_map(fn (RouteDefinition $route): array => [
         'method' => $route->method,
         'path' => $route->path,
@@ -257,8 +271,10 @@ function routeCacheDescribe(RouteCollection $routes): array
     ], $routes->inMatchOrder());
 }
 
-function routeCacheRequest(string $method, string $uri): Request
-{
+function routeCacheRequest(
+    string $method,
+    string $uri,
+): Request {
     return new Request(server: ['REQUEST_METHOD' => $method, 'REQUEST_URI' => $uri]);
 }
 
@@ -339,7 +355,7 @@ describe('route discovery cache', function (): void {
         $namespace = $this->project['namespace'];
         routeCacheCompileInSubprocess($this->project['base']);
 
-        $app =routeCacheApplication($this->project['base']);
+        $app = routeCacheApplication($this->project['base']);
         $app->initialize();
         $response = $app->router->handle(routeCacheRequest('GET', '/catalog/7'));
 
@@ -392,7 +408,10 @@ describe('route discovery cache', function (): void {
         file_put_contents("{$this->project['base']}/app/shop/module.php", "<?php\n\nreturn [];\n");
         $app = routeCacheApplication($this->project['base']);
 
-        expect(fn () => $app->initialize())->toThrow(DiscoveryCacheException::class, "module.php of 'app/shop' changed");
+        expect(fn () => $app->initialize())->toThrow(
+            DiscoveryCacheException::class,
+            "module.php of 'app/shop' changed",
+        );
 
         file_put_contents(
             "{$this->project['base']}/app/shop/module.php",
@@ -408,7 +427,10 @@ describe('route discovery cache', function (): void {
         $contributor = new RouteCacheContributor(new RouteCollector(new PreferenceRegistry(), new ClassFileParser()));
 
         expect(fn () => $contributor->hydrate([['method' => 'GET', 'path' => '/']]))
-            ->toThrow(DiscoveryCacheException::class, "Discovery cache section 'routes' is malformed: route 0.controller must be a string")
+            ->toThrow(
+                DiscoveryCacheException::class,
+                "Discovery cache section 'routes' is malformed: route 0.controller must be a string",
+            )
             ->and(fn () => $contributor->hydrate(['nope']))
             ->toThrow(DiscoveryCacheException::class, 'route 0 must be an array')
             ->and(fn () => $contributor->hydrate([[
@@ -447,7 +469,7 @@ describe('route discovery cache', function (): void {
             'name' => $r->name,
             'withoutMiddleware' => $r->withoutMiddleware,
         ], $routes->all());
-        $live->container->get(Marko\Core\Discovery\DiscoveryCache::class)->write($payload);
+        $live->container->get(DiscoveryCache::class)->write($payload);
 
         $cached = routeCacheApplication($this->project['base']);
 
@@ -455,10 +477,15 @@ describe('route discovery cache', function (): void {
     });
 });
 
-function runDiscoveryCacheCommand(Application $app): void
-{
+function runDiscoveryCacheCommand(
+    Application $app,
+): void {
     $stream = fopen('php://memory', 'w+');
-    $exitCode = $app->commandRunner->run('discovery:cache', new Input(['marko', 'discovery:cache']), new Output($stream));
+    $exitCode = $app->commandRunner->run(
+        'discovery:cache',
+        new Input(['marko', 'discovery:cache']),
+        new Output($stream),
+    );
     rewind($stream);
     $output = (string) stream_get_contents($stream);
     fclose($stream);

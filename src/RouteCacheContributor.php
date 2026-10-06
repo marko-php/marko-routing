@@ -41,8 +41,9 @@ readonly class RouteCacheContributor implements DiscoveryCacheContributorInterfa
      *
      * @throws RouteException|RouteConflictException|ReflectionException
      */
-    public function compile(array $modules): array
-    {
+    public function compile(
+        array $modules,
+    ): array {
         return array_map(
             fn (RouteDefinition $route): array => [
                 'method' => $route->method,
@@ -138,7 +139,10 @@ readonly class RouteCacheContributor implements DiscoveryCacheContributorInterfa
             || !is_array($record[$field])
             || !array_all($record[$field], fn (mixed $value): bool => is_string($value))
         ) {
-            throw DiscoveryCacheException::malformedSection(self::KEY, "route $index.$field must be a list of strings");
+            throw DiscoveryCacheException::malformedSection(
+                self::KEY,
+                "route $index.$field must be a list of strings",
+            );
         }
 
         return array_values($record[$field]);
