@@ -27,7 +27,7 @@ it('executes single middleware', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($middleware);
 
@@ -79,7 +79,7 @@ it('executes multiple middleware in order', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturnCallback(fn (string $class) => match ($class) {
             'Middleware1' => $middleware1,
@@ -118,7 +118,7 @@ it('passes request through middleware chain', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($middleware);
 
@@ -180,7 +180,7 @@ it('executes final handler after all middleware', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturnCallback(fn (string $class) => match ($class) {
             'Middleware1' => $middleware1,
@@ -234,7 +234,7 @@ it('allows middleware to short-circuit by returning early', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturnCallback(fn (string $class) => match ($class) {
             'Middleware1' => $middleware1,
@@ -280,7 +280,7 @@ it('allows middleware to modify request before passing', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($middleware);
 
@@ -326,7 +326,7 @@ it('allows middleware to modify response after receiving', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($middleware);
 
@@ -414,7 +414,7 @@ it('propagates exceptions from middleware', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($middleware);
 
@@ -439,7 +439,7 @@ it('propagates exceptions from handler', function () {
         }
     };
 
-    $container = $this->createMock(ContainerInterface::class);
+    $container = $this->createStub(ContainerInterface::class);
     $container->method('get')
         ->willReturn($middleware);
 
