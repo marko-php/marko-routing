@@ -163,7 +163,9 @@ describe('RoutingConfig', function (): void {
         $config = require dirname(__DIR__) . '/config/routing.php';
 
         expect($config)->toHaveKey('url')
-            ->and(file_get_contents(dirname(__DIR__) . '/config/routing.php'))->toContain("\$_ENV['APP_URL']");
+            ->and(file_get_contents(dirname(__DIR__) . '/config/routing.php'))->toContain(
+                "Env::string('APP_URL', '')",
+            );
     });
 });
 
