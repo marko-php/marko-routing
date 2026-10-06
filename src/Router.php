@@ -8,6 +8,7 @@ use JsonException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Plugin\PluginInterceptedInterface;
 use Marko\Routing\Attributes\InputSource;
+use Marko\Routing\Attributes\RunsInnermost;
 use Marko\Routing\Attributes\RunsOnUnmatched;
 use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Exceptions\InvalidRouteParameterException;
@@ -103,15 +104,27 @@ readonly class Router
     }
 
     /**
-     * Global then route middleware, minus anything the route excludes with
-     * #[WithoutMiddleware].
+     * Global middleware, then route middleware, then the global middleware
+     * marked #[RunsInnermost] (in declaration order), minus anything the
+     * route excludes with #[WithoutMiddleware].
      *
      * @return array<int, string>
      */
     private function middlewareFor(
         RouteDefinition $route,
     ): array {
-        $middleware = [...$this->globalMiddleware, ...$route->middleware];
+        $outer = [];
+        $innermost = [];
+
+        foreach ($this->globalMiddleware as $global) {
+            if ($this->hasClassAttribute($global, RunsInnermost::class)) {
+                $innermost[] = $global;
+            } else {
+                $outer[] = $global;
+            }
+        }
+
+        $middleware = [...$outer, ...$route->middleware, ...$innermost];
 
         if ($route->withoutMiddleware === []) {
             return $middleware;
@@ -132,9 +145,22 @@ readonly class Router
     {
         return array_values(array_filter(
             $this->globalMiddleware,
-            fn (string $middleware): bool => class_exists($middleware)
-                && new ReflectionClass($middleware)->getAttributes(RunsOnUnmatched::class) !== [],
+            fn (string $middleware): bool => $this->hasClassAttribute($middleware, RunsOnUnmatched::class),
         ));
+    }
+
+    /**
+     * Whether a loadable class carries the attribute. A class that cannot be
+     * loaded carries none; the container fails loudly when it resolves it.
+     *
+     * @param class-string $attribute
+     */
+    private function hasClassAttribute(
+        string $class,
+        string $attribute,
+    ): bool {
+        return class_exists($class)
+            && new ReflectionClass($class)->getAttributes($attribute) !== [];
     }
 
     /**
