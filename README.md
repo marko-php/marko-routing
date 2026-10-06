@@ -13,18 +13,20 @@ composer require marko/routing
 ```php
 use Marko\Routing\Attributes\Get;
 use Marko\Routing\Attributes\Post;
+use Marko\Routing\Attributes\RoutePrefix;
 use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Http\Response;
 
+#[RoutePrefix('/shop', namePrefix: 'shop.')]
 class ProductController
 {
-    #[Get('/products')]
+    #[Get('/products', name: 'products.index')]
     public function index(): Response
     {
         return new Response('Product list');
     }
 
-    #[Get('/products/{id}')]
+    #[Get('/products/{id:\d+}', name: 'products.show')] // $urlGenerator->route('shop.products.show', ['id' => 7])
     public function show(int $id): Response
     {
         if ($id > 1000) {

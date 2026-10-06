@@ -41,11 +41,8 @@ it('has Command attribute with name route:list', function (): void {
     $reflection = new ReflectionClass(RouteListCommand::class);
     $attributes = $reflection->getAttributes(Command::class);
 
-    expect($attributes)->toHaveCount(1);
-
-    $command = $attributes[0]->newInstance();
-
-    expect($command->name)->toBe('route:list');
+    expect($attributes)->toHaveCount(1)
+        ->and($attributes[0]->newInstance()->name)->toBe('route:list');
 });
 
 it('has Command attribute with description Show all registered routes', function (): void {
@@ -179,14 +176,11 @@ it('formats output with aligned columns', function (): void {
 
     $lines = explode("\n", trim($result));
 
-    expect($lines[0])->toMatch('/^METHOD\s+PATH\s+ACTION\s+MIDDLEWARE$/');
-
     $headerPathPos = strpos($lines[0], 'PATH');
-    $row1PathPos = strpos($lines[1], '/users');
-    $row2PathPos = strpos($lines[2], '/articles');
 
-    expect($row1PathPos)->toBe($headerPathPos)
-        ->and($row2PathPos)->toBe($headerPathPos);
+    expect($lines[0])->toMatch('/^METHOD\s+PATH\s+NAME\s+ACTION\s+MIDDLEWARE$/')
+        ->and(strpos($lines[1], '/users'))->toBe($headerPathPos)
+        ->and(strpos($lines[2], '/articles'))->toBe($headerPathPos);
 });
 
 it('returns exit code 0', function (): void {
@@ -269,4 +263,55 @@ it('filters routes by method when --method option is provided', function (): voi
 
     expect($result)->toContain('GET')
         ->and($result)->not->toContain('POST');
+});
+
+it('shows a NAME column with each route name', function (): void {
+    $result = runCommand(makeCollection([
+        new RouteDefinition('GET', '/shows/{id}', 'App\\Controllers\\ShowController', 'show', name: 'shows.show'),
+    ]));
+
+    $lines = explode("\n", trim($result));
+
+    expect($lines[0])->toContain('NAME')
+        ->and(strpos($lines[1], 'shows.show'))->toBe(strpos($lines[0], 'NAME'));
+});
+
+it('shows the full prefixed path', function (): void {
+    $result = runCommand(makeCollection([
+        new RouteDefinition(
+            'GET',
+            '/api/v1/shows/{id:\d+}',
+            'App\\Controllers\\ShowController',
+            'show',
+            name: 'api.v1.shows.show',
+        ),
+    ]));
+
+    expect($result)->toContain('/api/v1/shows/{id:\d+}')
+        ->and($result)->toContain('api.v1.shows.show');
+});
+
+it('leaves the name blank for unnamed routes', function (): void {
+    $result = runCommand(makeCollection([
+        new RouteDefinition('GET', '/users', 'App\\Controllers\\UserController', 'index'),
+    ]));
+
+    $lines = explode("\n", trim($result));
+
+    expect($lines[1])->toMatch('/^GET\s+\/users\s+UserController::index$/');
+});
+
+it('shows excluded middleware with a minus sign', function (): void {
+    $result = runCommand(makeCollection([
+        new RouteDefinition(
+            'POST',
+            '/webhooks',
+            'App\\Controllers\\WebhookController',
+            'receive',
+            middleware: ['App\\Middleware\\VerifySignature'],
+            withoutMiddleware: ['Marko\\Session\\Middleware\\SessionMiddleware'],
+        ),
+    ]));
+
+    expect($result)->toContain('VerifySignature, -SessionMiddleware');
 });

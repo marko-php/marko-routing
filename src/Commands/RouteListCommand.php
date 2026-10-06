@@ -35,35 +35,40 @@ readonly class RouteListCommand implements CommandInterface
 
         $methodWidth = strlen('METHOD');
         $pathWidth = strlen('PATH');
+        $nameWidth = strlen('NAME');
         $actionWidth = strlen('ACTION');
 
         foreach ($routes as $route) {
             $action = $this->shortAction($route);
             $methodWidth = max($methodWidth, strlen($route->method));
             $pathWidth = max($pathWidth, strlen($route->path));
+            $nameWidth = max($nameWidth, strlen((string) $route->name));
             $actionWidth = max($actionWidth, strlen($action));
         }
 
         $methodWidth += 2;
         $pathWidth += 2;
+        $nameWidth += 2;
         $actionWidth += 2;
 
         $output->writeLine(
             str_pad('METHOD', $methodWidth) .
             str_pad('PATH', $pathWidth) .
+            str_pad('NAME', $nameWidth) .
             str_pad('ACTION', $actionWidth) .
             'MIDDLEWARE',
         );
 
         foreach ($routes as $route) {
             $action = $this->shortAction($route);
-            $middleware = $this->shortMiddleware($route->middleware);
-            $output->writeLine(
+            $middleware = $this->shortMiddleware($route->middleware, $route->withoutMiddleware);
+            $output->writeLine(rtrim(
                 str_pad($route->method, $methodWidth) .
                 str_pad($route->path, $pathWidth) .
+                str_pad((string) $route->name, $nameWidth) .
                 str_pad($action, $actionWidth) .
                 $middleware,
-            );
+            ));
         }
 
         return 0;
@@ -105,16 +110,25 @@ readonly class RouteListCommand implements CommandInterface
     }
 
     /**
+     * Route middleware as short class names, then excluded middleware
+     * prefixed with a minus sign.
+     *
      * @param array<int, string> $middleware
+     * @param array<int, string> $withoutMiddleware
      */
-    private function shortMiddleware(array $middleware): string
-    {
-        $short = array_map(function (string $class): string {
+    private function shortMiddleware(
+        array $middleware,
+        array $withoutMiddleware,
+    ): string {
+        $shortName = function (string $class): string {
             $parts = explode('\\', $class);
 
             return end($parts);
-        }, $middleware);
+        };
 
-        return implode(', ', $short);
+        return implode(', ', [
+            ...array_map($shortName, $middleware),
+            ...array_map(fn (string $class): string => '-' . $shortName($class), $withoutMiddleware),
+        ]);
     }
 }

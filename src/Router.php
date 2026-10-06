@@ -88,13 +88,29 @@ readonly class Router
             return $this->wrapResult($result);
         };
 
-        $middleware = [...$this->globalMiddleware, ...$matched->route->middleware];
-
         return $this->pipeline->process(
-            $middleware,
+            $this->middlewareFor($matched->route),
             $request,
             $handler,
         );
+    }
+
+    /**
+     * Global then route middleware, minus anything the route excludes with
+     * #[WithoutMiddleware].
+     *
+     * @return array<int, string>
+     */
+    private function middlewareFor(
+        RouteDefinition $route,
+    ): array {
+        $middleware = [...$this->globalMiddleware, ...$route->middleware];
+
+        if ($route->withoutMiddleware === []) {
+            return $middleware;
+        }
+
+        return array_values(array_diff($middleware, $route->withoutMiddleware));
     }
 
     /**

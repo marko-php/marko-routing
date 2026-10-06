@@ -12,9 +12,11 @@ use Marko\Routing\Exceptions\RouteConflictException;
  * Match order (per HTTP method) does not depend on registration order:
  *
  * 1. Static paths (no parameters) first — matched by exact lookup.
- * 2. Dynamic paths by descending number of static segments.
- * 3. Then by descending length of the static prefix before the first parameter.
- * 4. Ties keep registration order.
+ * 2. Catch-all paths (`{path*}`) after every other dynamic path.
+ * 3. Dynamic paths by descending number of static segments.
+ * 4. Then by descending number of constrained parameters (`{id:\d+}`).
+ * 5. Then by descending length of the static prefix before the first parameter.
+ * 6. Ties keep registration order.
  */
 class RouteCollection
 {
@@ -22,6 +24,9 @@ class RouteCollection
 
     /** @var array<string, RouteDefinition> */
     private array $routes = [];
+
+    /** @var array<string, RouteDefinition> Routes keyed by name */
+    private array $names = [];
 
     /** @var array<string, array<int, RouteDefinition>> Sorted routes per method, built lazily */
     private array $sorted = [];
@@ -46,8 +51,43 @@ class RouteCollection
             );
         }
 
+        if ($route->name !== null && isset($this->names[$route->name])) {
+            $existing = $this->names[$route->name];
+            throw RouteConflictException::duplicateName(
+                name: $route->name,
+                existingController: $existing->controller,
+                existingMethod: $existing->action,
+                newController: $route->controller,
+                newMethod: $route->action,
+            );
+        }
+
         $this->routes[$key] = $route;
+
+        if ($route->name !== null) {
+            $this->names[$route->name] = $route;
+        }
+
         unset($this->sorted[$route->method]);
+    }
+
+    /**
+     * The route registered under a name, or null when no route has it.
+     */
+    public function named(
+        string $name,
+    ): ?RouteDefinition {
+        return $this->names[$name] ?? null;
+    }
+
+    /**
+     * Every route name, in registration order.
+     *
+     * @return array<int, string>
+     */
+    public function names(): array
+    {
+        return array_keys($this->names);
     }
 
     public function has(
@@ -168,11 +208,15 @@ class RouteCollection
         // usort is stable since PHP 8.0, so equal routes keep registration order.
         usort($routes, fn (RouteDefinition $a, RouteDefinition $b): int => [
             $b->isStatic,
+            $b->catchAll === null,
             $b->staticSegmentCount,
+            count($b->constraints),
             $b->staticPrefixLength,
         ] <=> [
             $a->isStatic,
+            $a->catchAll === null,
             $a->staticSegmentCount,
+            count($a->constraints),
             $a->staticPrefixLength,
         ]);
 

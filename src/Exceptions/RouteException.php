@@ -6,6 +6,7 @@ namespace Marko\Routing\Exceptions;
 
 use Error;
 use Marko\Core\Exceptions\MarkoException;
+use Marko\Routing\RouteDefinition;
 
 class RouteException extends MarkoException
 {
@@ -66,6 +67,70 @@ class RouteException extends MarkoException
             message: "Invalid route parameter '$parameter' in route definition.",
             context: "Path: $path, Error: $reason",
             suggestion: 'Route parameters must use the format {name} or {name:pattern}. Example: {id} or {slug:[a-z-]+}',
+        );
+    }
+
+    public static function invalidConstraint(
+        string $path,
+        string $parameter,
+        string $constraint,
+        string $reason,
+    ): self {
+        return new self(
+            message: "Invalid constraint for route parameter '$parameter': '$constraint'",
+            context: "Path: $path, Error: $reason",
+            suggestion: 'Write the constraint as a PCRE pattern without delimiters, e.g. {id:\d+} or {slug:[a-z0-9-]+}',
+        );
+    }
+
+    public static function capturingGroupInConstraint(
+        string $path,
+        string $parameter,
+        string $constraint,
+    ): self {
+        return new self(
+            message: "Constraint for route parameter '$parameter' contains a capturing group: '$constraint'",
+            context: "Path: $path",
+            suggestion: 'Use a non-capturing group (?:...) instead of (...), e.g. {format:(?:json|xml)}',
+        );
+    }
+
+    public static function catchAllNotFinal(
+        string $path,
+        string $parameter,
+    ): self {
+        return new self(
+            message: "Catch-all parameter '$parameter' must be the last segment of the route path",
+            context: "Path: $path",
+            suggestion: 'Move {' . $parameter . '*} to the end of the path as its own segment, e.g. /files/{' . $parameter . '*}',
+        );
+    }
+
+    public static function invalidPrefix(
+        string $controller,
+        string $prefix,
+    ): self {
+        return new self(
+            message: "Route prefix '$prefix' must start with '/'",
+            context: "#[RoutePrefix] on $controller",
+            suggestion: "Write the prefix as an absolute path, e.g. #[RoutePrefix('/" . ltrim($prefix, '/') . "')]",
+        );
+    }
+
+    /**
+     * @param array<int, string> $stack
+     */
+    public static function excludedMiddlewareNotInStack(
+        RouteDefinition $route,
+        string $middleware,
+        array $stack,
+    ): self {
+        $stackList = $stack === [] ? 'none' : implode(', ', $stack);
+
+        return new self(
+            message: "Route excludes middleware '$middleware', which is not in its middleware stack",
+            context: "Route: $route->method $route->path ($route->controller::$route->action()). Global and route middleware: $stackList",
+            suggestion: 'Check the class name in #[WithoutMiddleware], or remove it: the middleware is not registered as global middleware by any installed module and is not on the route.',
         );
     }
 

@@ -55,6 +55,7 @@ class RoutingBootstrapper
     ): Router {
         // Discover routes from all modules
         $this->discoverRoutes();
+        $this->assertExcludedMiddlewareExists($globalMiddleware);
 
         // Register RouteCollection as singleton instance
         $this->container->instance(RouteCollection::class, $this->routes);
@@ -75,6 +76,28 @@ class RoutingBootstrapper
         $this->container->instance(Router::class, $router);
 
         return $router;
+    }
+
+    /**
+     * Every middleware a route excludes must be in its stack (global or route
+     * middleware), so a typo or an uninstalled package fails at boot instead
+     * of silently excluding nothing.
+     *
+     * @param array<class-string<MiddlewareInterface>> $globalMiddleware
+     * @throws RouteException
+     */
+    private function assertExcludedMiddlewareExists(
+        array $globalMiddleware,
+    ): void {
+        foreach ($this->routes->all() as $route) {
+            $stack = [...$globalMiddleware, ...$route->middleware];
+
+            foreach ($route->withoutMiddleware as $excluded) {
+                if (!in_array($excluded, $stack, true)) {
+                    throw RouteException::excludedMiddlewareNotInStack($route, $excluded, $stack);
+                }
+            }
+        }
     }
 
     /**
@@ -220,6 +243,8 @@ class RoutingBootstrapper
 
     /**
      * Check if a class is a Preference that extends a controller with routes.
+     *
+     * @throws ReflectionException
      */
     private function isPreferenceForController(
         ReflectionClass $reflection,

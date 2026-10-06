@@ -10,8 +10,12 @@ use Marko\Core\Module\ModuleManifest;
 use Marko\Routing\Attributes\DisableRoute;
 use Marko\Routing\Attributes\Middleware;
 use Marko\Routing\Attributes\Route;
+use Marko\Routing\Attributes\RoutePrefix;
+use Marko\Routing\Attributes\WithoutMiddleware;
 use Marko\Routing\Exceptions\RouteException;
+use ReflectionAttribute;
 use ReflectionClass;
+use ReflectionException;
 use ReflectionMethod;
 
 class RouteDiscovery
@@ -32,13 +36,22 @@ class RouteDiscovery
      *
      * @param class-string $className
      * @return array<RouteDefinition>
+     * @throws ReflectionException|RouteException
      */
     public function discoverFromClass(
         string $className,
     ): array {
         $routes = [];
         $reflection = new ReflectionClass($className);
-        $classMiddleware = $this->getClassMiddleware($reflection);
+        // Class-level attributes come from the class and every ancestor, so a
+        // #[Preference] subclass keeps its parent's middleware and exclusions.
+        $hierarchy = $this->classHierarchy($reflection);
+        $classMiddleware = array_values(array_unique(array_merge(
+            ...array_map(fn (ReflectionClass $class): array => $this->getClassMiddleware($class), $hierarchy),
+        )));
+        $classWithoutMiddleware = array_merge(
+            ...array_map(fn (ReflectionClass $class): array => $this->getWithoutMiddleware($class), $hierarchy),
+        );
 
         foreach ($reflection->getMethods() as $method) {
             if ($this->isRouteDisabled($method)) {
@@ -61,12 +74,18 @@ class RouteDiscovery
                 }
                 if ($instance instanceof Route) {
                     $methodMiddleware = $this->getMethodMiddleware($method);
+                    $prefix = $this->resolvePrefix($method->getDeclaringClass());
                     $routes[] = new RouteDefinition(
                         method: $instance->getMethod(),
-                        path: $instance->path,
+                        path: $this->joinPrefix($prefix?->prefix ?? '', $instance->path),
                         controller: $className,
                         action: $method->getName(),
                         middleware: array_merge($classMiddleware, $instance->middleware, $methodMiddleware),
+                        name: $instance->name === null ? null : ($prefix?->namePrefix ?? '') . $instance->name,
+                        withoutMiddleware: array_values(array_unique(array_merge(
+                            $classWithoutMiddleware,
+                            $this->getWithoutMiddleware($method),
+                        ))),
                     );
                 }
             }
@@ -76,9 +95,86 @@ class RouteDiscovery
     }
 
     /**
+     * The #[RoutePrefix] for a method's declaring class, or for its nearest
+     * ancestor that has one.
+     *
+     * @throws RouteException When the prefix does not start with a slash
+     */
+    private function resolvePrefix(
+        ReflectionClass $class,
+    ): ?RoutePrefix {
+        $current = $class;
+
+        while ($current !== false) {
+            $attributes = $current->getAttributes(RoutePrefix::class);
+
+            if ($attributes !== []) {
+                $prefix = $attributes[0]->newInstance();
+
+                if (!str_starts_with($prefix->prefix, '/')) {
+                    throw RouteException::invalidPrefix($current->getName(), $prefix->prefix);
+                }
+
+                return $prefix;
+            }
+
+            $current = $current->getParentClass();
+        }
+
+        return null;
+    }
+
+    private function joinPrefix(
+        string $prefix,
+        string $path,
+    ): string {
+        if ($prefix === '') {
+            return $path;
+        }
+
+        $joined = rtrim($prefix, '/') . '/' . ltrim($path, '/');
+
+        return $joined === '/' ? $joined : rtrim($joined, '/');
+    }
+
+    /**
+     * The class and its ancestors, root ancestor first.
+     *
+     * @return array<int, ReflectionClass>
+     */
+    private function classHierarchy(
+        ReflectionClass $reflection,
+    ): array {
+        $hierarchy = [];
+        $current = $reflection;
+
+        while ($current !== false) {
+            array_unshift($hierarchy, $current);
+            $current = $current->getParentClass();
+        }
+
+        return $hierarchy;
+    }
+
+    /**
+     * Middleware excluded by #[WithoutMiddleware] on a class or method.
+     *
+     * @return array<int, string>
+     */
+    private function getWithoutMiddleware(
+        ReflectionClass|ReflectionMethod $reflection,
+    ): array {
+        return array_merge(...array_map(
+            fn (ReflectionAttribute $attribute): array => $attribute->newInstance()->middleware,
+            $reflection->getAttributes(WithoutMiddleware::class),
+        ));
+    }
+
+    /**
      * Get middleware defined at the class level.
      *
      * @return array<string>
+     * @throws RouteException
      */
     private function getClassMiddleware(
         ReflectionClass $reflection,
@@ -108,6 +204,7 @@ class RouteDiscovery
      * Get middleware defined at the method level.
      *
      * @return array<string>
+     * @throws RouteException
      */
     private function getMethodMiddleware(
         ReflectionMethod $method,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Marko\Routing\Exceptions\RouteConflictException;
 use Marko\Routing\RouteCollection;
 use Marko\Routing\RouteDefinition;
+use Marko\Routing\RouteMatcher;
 
 it('stores RouteDefinition objects', function () {
     $collection = new RouteCollection();
@@ -283,6 +284,38 @@ describe('precedence', function (): void {
     it('keeps registration order for routes of equal specificity', function (): void {
         expect(orderedPaths(['/posts/{id}', '/posts/{slug}/x', '/pages/{id}']))
             ->toBe(['/posts/{slug}/x', '/posts/{id}', '/pages/{id}']);
+    });
+
+    it('tries a constrained route before an unconstrained route with the same static segments', function (): void {
+        expect(orderedPaths(['/shows/{slug}', '/shows/{id:\d+}']))->toBe(['/shows/{id:\d+}', '/shows/{slug}']);
+    });
+
+    it('still orders by static segment count before constraints', function (): void {
+        expect(orderedPaths(['/a/{x:\d+}/{y}', '/a/{x}/c']))->toBe(['/a/{x}/c', '/a/{x:\d+}/{y}']);
+    });
+
+    it('tries catch-all routes after other dynamic routes', function (): void {
+        expect(orderedPaths(['/docs/{path*}', '/{section}/{page}', '/docs/{page}']))
+            ->toBe(['/docs/{page}', '/{section}/{page}', '/docs/{path*}']);
+    });
+
+    it('falls through to the next route when a constraint rejects the value', function (): void {
+        $collection = new RouteCollection();
+        $collection->add(new RouteDefinition(method: 'GET', path: '/shows/{slug}', controller: 'C', action: 'bySlug'));
+        $collection->add(new RouteDefinition(method: 'GET', path: '/shows/{id:\d+}', controller: 'C', action: 'byId'));
+        $matcher = new RouteMatcher($collection);
+
+        expect($matcher->match('GET', '/shows/42')->route->action)->toBe('byId')
+            ->and($matcher->match('GET', '/shows/abc')->route->action)->toBe('bySlug');
+    });
+
+    it('returns no match when the only candidate constraint rejects the value', function (): void {
+        $collection = new RouteCollection();
+        $collection->add(new RouteDefinition(method: 'GET', path: '/shows/{id:\d+}', controller: 'C', action: 'byId'));
+        $matcher = new RouteMatcher($collection);
+
+        expect($matcher->match('GET', '/shows/abc'))->toBeNull()
+            ->and($matcher->allowedMethods('/shows/abc'))->toBeEmpty();
     });
 
     it('re-sorts after a route is added', function (): void {

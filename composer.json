@@ -6,9 +6,11 @@
     "require": {
         "php": "^8.5",
         "ext-fileinfo": "*",
+        "marko/config": "self.version",
         "marko/core": "self.version"
     },
     "require-dev": {
+        "marko/testing": "self.version",
         "pestphp/pest": "^4.0"
     },
     "autoload": {

@@ -9,6 +9,7 @@ use Marko\Routing\Attributes\DisableRoute;
 use Marko\Routing\Attributes\InheritRoute;
 use Marko\Routing\Exceptions\RouteException;
 use ReflectionClass;
+use ReflectionException;
 
 class PreferenceRouteResolver
 {
@@ -37,7 +38,7 @@ class PreferenceRouteResolver
      *
      * @param class-string $className
      * @return array<RouteDefinition>
-     * @throws RouteException When a method is overridden without a route attribute
+     * @throws RouteException|ReflectionException When a method is overridden without a route attribute, or a class cannot be reflected
      */
     public function resolveRoutes(
         string $className,
@@ -78,13 +79,7 @@ class PreferenceRouteResolver
 
                 // Check if method has InheritRoute - explicitly inherit parent's route
                 if ($this->hasInheritRoute($reflection, $parentRoute->action)) {
-                    $resolvedRoutes[] = new RouteDefinition(
-                        method: $parentRoute->method,
-                        path: $parentRoute->path,
-                        controller: $className,
-                        action: $parentRoute->action,
-                        middleware: $parentRoute->middleware,
-                    );
+                    $resolvedRoutes[] = $parentRoute->withController($className);
                     continue;
                 }
 
@@ -98,13 +93,7 @@ class PreferenceRouteResolver
                 }
 
                 // Inherit parent route but use child controller
-                $resolvedRoutes[] = new RouteDefinition(
-                    method: $parentRoute->method,
-                    path: $parentRoute->path,
-                    controller: $className,
-                    action: $parentRoute->action,
-                    middleware: $parentRoute->middleware,
-                );
+                $resolvedRoutes[] = $parentRoute->withController($className);
             }
         }
 
