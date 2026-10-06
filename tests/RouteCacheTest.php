@@ -413,6 +413,9 @@ describe('route discovery cache', function (): void {
             "module.php of 'app/shop' changed",
         );
 
+        // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+        $app->bootstrapErrorHandler->unregister();
+
         file_put_contents(
             "{$this->project['base']}/app/shop/module.php",
             "<?php\n\nreturn ['globalMiddleware' => [\\$namespace\\GlobalHeader::class]];\n",
@@ -474,6 +477,9 @@ describe('route discovery cache', function (): void {
         $cached = routeCacheApplication($this->project['base']);
 
         expect(fn () => $cached->initialize())->toThrow(RouteException::class);
+
+        // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+        $cached->bootstrapErrorHandler->unregister();
     });
 });
 
