@@ -505,6 +505,9 @@ PHP;
 
     expect(fn () => $app->initialize())->toThrow(RouteConflictException::class);
 
+    // A failed boot leaves the bootstrap error handler installed for the uncaught exception
+    $app->bootstrapErrorHandler->unregister();
+
     routingTestCleanupDirectory($baseDir);
 });
 
