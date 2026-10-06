@@ -9,6 +9,7 @@ use Marko\Core\Container\Container;
 use Marko\Core\Container\PreferenceRegistry;
 use Marko\Core\Discovery\ClassFileParser;
 use Marko\Core\Exceptions\HttpExceptionInterface;
+use Marko\Routing\Attributes\FromQuery;
 use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Http\ExceptionRenderer;
 use Marko\Routing\Http\Request;
@@ -33,6 +34,7 @@ class ThrowingController
     }
 
     public function needsCount(
+        #[FromQuery]
         int $count,
     ): Response {
         return new Response("count=$count");

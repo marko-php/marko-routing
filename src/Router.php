@@ -7,20 +7,24 @@ namespace Marko\Routing;
 use JsonException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\Core\Plugin\PluginInterceptedInterface;
+use Marko\Routing\Attributes\InputSource;
 use Marko\Routing\Attributes\RunsOnUnmatched;
 use Marko\Routing\Exceptions\HttpException;
 use Marko\Routing\Exceptions\InvalidRouteParameterException;
 use Marko\Routing\Exceptions\MalformedJsonException;
+use Marko\Routing\Exceptions\RouteException;
 use Marko\Routing\Http\ExceptionRenderer;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
 use Marko\Routing\Middleware\MiddlewareInterface;
 use Marko\Routing\Middleware\MiddlewarePipeline;
 use Psr\Container\ContainerExceptionInterface;
+use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionParameter;
 use ReflectionType;
 
 readonly class Router
@@ -162,11 +166,17 @@ readonly class Router
     }
 
     /**
-     * Resolve controller method parameters from route params, the request body (JSON or form data), and query string.
+     * Resolve controller method parameters.
+     *
+     * A parameter is bound from, in order: a `Request` type hint, an input
+     * attribute (#[FromQuery], #[FromBody], #[FromInput]), the route path, or
+     * the container for class and interface types. Request input never reaches a
+     * parameter that has not opted in with an attribute. Anything left falls
+     * back to its default value, then to null when the type allows it.
      *
      * @param array<string, mixed> $routeParams
      * @return array<mixed>
-     * @throws ReflectionException|InvalidRouteParameterException|MalformedJsonException
+     * @throws ReflectionException|InvalidRouteParameterException|MalformedJsonException|HttpException|RouteException|ContainerExceptionInterface
      */
     private function resolveParameters(
         object $controller,
@@ -182,62 +192,177 @@ readonly class Router
         $parameters = [];
 
         foreach ($reflection->getParameters() as $param) {
-            $name = $param->getName();
-            $type = $param->getType();
-
-            // Inject Request object when type-hinted
-            if ($type instanceof ReflectionNamedType && $type->getName() === Request::class) {
-                $parameters[] = $request;
-                continue;
-            }
-
-            // Priority: route params > body (JSON or form data) > query string > default
-            if (array_key_exists($name, $routeParams)) {
-                $parameters[] = $this->castToType($routeParams[$name], $type);
-            } elseif (($inputValue = $request->input($name)) !== null) {
-                $parameters[] = $this->castToType($inputValue, $type);
-            } elseif ($param->isDefaultValueAvailable()) {
-                $parameters[] = $param->getDefaultValue();
-            } elseif ($this->isRequiredTypedScalar($type)) {
-                throw InvalidRouteParameterException::missingRequired(
-                    paramName: $name,
-                    expectedType: $type->getName(),
-                    controller: $reflectionTarget::class,
-                    action: $action,
-                );
-            } else {
-                $parameters[] = null;
-            }
+            $parameters[] = $this->resolveParameter(
+                $param,
+                $routeParams,
+                $request,
+                $reflectionTarget::class,
+                $action,
+            );
         }
 
         return $parameters;
     }
 
-    private function isRequiredTypedScalar(
-        ?ReflectionType $type,
-    ): bool {
-        if (!$type instanceof ReflectionNamedType) {
-            return false;
+    /**
+     * @param array<string, mixed> $routeParams
+     * @throws InvalidRouteParameterException|MalformedJsonException|HttpException|RouteException|ContainerExceptionInterface
+     */
+    private function resolveParameter(
+        ReflectionParameter $param,
+        array $routeParams,
+        Request $request,
+        string $controller,
+        string $action,
+    ): mixed {
+        $name = $param->getName();
+        $type = $param->getType();
+        if ($type instanceof ReflectionNamedType && $type->getName() === Request::class) {
+            return $request;
         }
 
-        return in_array($type->getName(), ['int', 'float', 'bool', 'string'], true)
-            && !$type->allowsNull();
+        $source = $this->inputSource($param, $controller, $action);
+
+        if ($source !== null) {
+            $value = $source->read($request, $source->name ?? $name);
+
+            if ($value !== null) {
+                return $this->coerce($value, $type, $name, $controller, $action);
+            }
+
+            if ($param->isDefaultValueAvailable()) {
+                return $param->getDefaultValue();
+            }
+
+            if ($param->allowsNull()) {
+                return null;
+            }
+
+            throw InvalidRouteParameterException::missingRequired(
+                paramName: $name,
+                expectedType: $type instanceof ReflectionType ? (string) $type : 'mixed',
+                controller: $controller,
+                action: $action,
+            );
+        }
+
+        if (array_key_exists($name, $routeParams)) {
+            return $this->coerce($routeParams[$name], $type, $name, $controller, $action);
+        }
+
+        if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
+            return $this->resolveDependency($param, $type->getName());
+        }
+
+        if ($param->isDefaultValueAvailable()) {
+            return $param->getDefaultValue();
+        }
+
+        if ($param->allowsNull()) {
+            return null;
+        }
+
+        throw RouteException::unboundParameter(
+            controller: $controller,
+            action: $action,
+            parameter: $name,
+        );
     }
 
-    private function castToType(
+    /**
+     * @throws RouteException
+     */
+    private function inputSource(
+        ReflectionParameter $param,
+        string $controller,
+        string $action,
+    ): ?InputSource {
+        $attributes = $param->getAttributes(InputSource::class, ReflectionAttribute::IS_INSTANCEOF);
+
+        if ($attributes === []) {
+            return null;
+        }
+
+        if (count($attributes) > 1) {
+            throw RouteException::conflictingInputSources(
+                controller: $controller,
+                action: $action,
+                parameter: $param->getName(),
+            );
+        }
+
+        return $attributes[0]->newInstance();
+    }
+
+    /**
+     * Resolve a class or interface typed parameter from the container. A
+     * parameter with a default (or a nullable one) keeps it when the container
+     * cannot provide the type.
+     *
+     * @throws ContainerExceptionInterface
+     */
+    private function resolveDependency(
+        ReflectionParameter $param,
+        string $class,
+    ): mixed {
+        if (!$this->container->has($class)) {
+            if ($param->isDefaultValueAvailable()) {
+                return $param->getDefaultValue();
+            }
+
+            if ($param->allowsNull()) {
+                return null;
+            }
+        }
+
+        return $this->container->get($class);
+    }
+
+    /**
+     * Convert a raw route or input value to the parameter's declared type.
+     * Values that do not fit (`?page=abc` for `int`, `?name[]=x` for `string`)
+     * are a client error and answered with a 400, never a TypeError.
+     *
+     * @throws HttpException|RouteException
+     */
+    private function coerce(
         mixed $value,
         ?ReflectionType $type,
+        string $name,
+        string $controller,
+        string $action,
     ): mixed {
-        if (!$type instanceof ReflectionNamedType) {
+        if (!$type instanceof ReflectionNamedType || $type->getName() === 'mixed') {
             return $value;
         }
 
-        return match ($type->getName()) {
-            'int' => (int) $value,
-            'float' => (float) $value,
-            'bool' => (bool) $value,
-            default => $value,
+        $typeName = $type->getName();
+
+        $coerced = match ($typeName) {
+            'int' => is_string($value) || is_int($value)
+                ? filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE)
+                : null,
+            'float' => is_string($value) || is_int($value) || is_float($value)
+                ? filter_var($value, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE)
+                : null,
+            'bool' => is_string($value) || is_int($value) || is_bool($value)
+                ? filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE)
+                : null,
+            'string' => is_string($value) || is_int($value) || is_float($value) ? (string) $value : null,
+            'array' => is_array($value) ? $value : null,
+            default => throw RouteException::unsupportedParameterType(
+                controller: $controller,
+                action: $action,
+                parameter: $name,
+                type: $typeName,
+            ),
         };
+
+        if ($coerced === null) {
+            throw HttpException::badRequest("Invalid value for parameter '$name': expected $typeName");
+        }
+
+        return $coerced;
     }
 
     private function wrapResult(

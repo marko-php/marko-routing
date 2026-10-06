@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use Marko\Core\Container\ContainerInterface;
+use Marko\Routing\Attributes\FromBody;
+use Marko\Routing\Attributes\FromInput;
+use Marko\Routing\Attributes\FromQuery;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
 use Marko\Routing\Middleware\MiddlewareInterface;
@@ -830,6 +833,7 @@ it('does not raise a TypeError when a required typed scalar param is missing', f
     $controller = new class ()
     {
         public function index(
+            #[FromQuery]
             int $page,
         ): Response {
             return new Response('OK');
@@ -871,6 +875,7 @@ it('returns a 4xx response naming the parameter when a required typed scalar par
     $controller = new class ()
     {
         public function store(
+            #[FromBody]
             int $count,
         ): Response {
             return new Response('OK');
@@ -914,6 +919,7 @@ it('casts a query-string value to a typed scalar action parameter', function ():
         ) {}
 
         public function index(
+            #[FromQuery]
             int $page,
         ): Response {
             $this->receivedPage = $page;
@@ -958,6 +964,7 @@ it('casts a POST value to a bool action parameter', function (): void {
         ) {}
 
         public function store(
+            #[FromBody]
             bool $active,
         ): Response {
             $this->receivedActive = $active;
@@ -1002,6 +1009,7 @@ it('casts a POST value to an int action parameter', function (): void {
         ) {}
 
         public function store(
+            #[FromBody]
             int $count,
         ): Response {
             $this->receivedCount = $count;
@@ -1046,7 +1054,9 @@ it('binds json body fields to typed controller parameters', function (): void {
         ) {}
 
         public function create(
+            #[FromBody]
             string $title,
+            #[FromBody]
             int $count,
         ): Response {
             $this->received = ['title' => $title, 'count' => $count];
@@ -1092,6 +1102,7 @@ it('prefers a json body value over a query value of the same name', function ():
         ) {}
 
         public function create(
+            #[FromInput]
             string $title,
         ): Response {
             $this->receivedTitle = $title;
@@ -1132,6 +1143,7 @@ it('returns 400 when a json request body is malformed during parameter binding',
     $controller = new class ()
     {
         public function create(
+            #[FromBody]
             string $title,
         ): Response {
             return new Response('OK');

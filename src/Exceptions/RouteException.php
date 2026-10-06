@@ -134,6 +134,43 @@ class RouteException extends MarkoException
         );
     }
 
+    public static function unboundParameter(
+        string $controller,
+        string $action,
+        string $parameter,
+    ): self {
+        return new self(
+            message: "Controller parameter '$parameter' cannot be bound: it is not a route parameter and does not opt in to request input",
+            context: "While dispatching $controller::$action()",
+            suggestion: 'Add {' . $parameter . '} to the route path, mark the parameter #[FromQuery], #[FromBody] or #[FromInput] to read it from the request, or give it a default value',
+        );
+    }
+
+    public static function conflictingInputSources(
+        string $controller,
+        string $action,
+        string $parameter,
+    ): self {
+        return new self(
+            message: "Controller parameter '$parameter' has more than one input attribute",
+            context: "While dispatching $controller::$action()",
+            suggestion: 'Keep one of #[FromQuery], #[FromBody] or #[FromInput]; use #[FromInput] to read the body with a query-string fallback',
+        );
+    }
+
+    public static function unsupportedParameterType(
+        string $controller,
+        string $action,
+        string $parameter,
+        string $type,
+    ): self {
+        return new self(
+            message: "Controller parameter '$parameter' has type '$type', which cannot be bound from a route or request input value",
+            context: "While dispatching $controller::$action()",
+            suggestion: "Declare the parameter as int, float, bool, string, array or mixed and build the '$type' value inside the action",
+        );
+    }
+
     public static function controllerNotFound(
         string $controller,
         string $path,

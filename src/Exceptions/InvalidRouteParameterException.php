@@ -22,7 +22,7 @@ class InvalidRouteParameterException extends MarkoException implements HttpExcep
         return new self(
             message: "Missing required parameter '$paramName' of type '$expectedType'",
             context: "While dispatching $controller::$action()",
-            suggestion: "Provide a '$paramName' value in the route, POST body, or query string",
+            suggestion: "Send a '$paramName' value from the source its #[FromQuery], #[FromBody] or #[FromInput] attribute names, or give the parameter a default value",
         );
     }
 
